@@ -1,3 +1,19 @@
+<?php
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+if (empty($_SESSION['id'])) {
+    header('Location: index.php');
+    exit;
+}
+
+if (($_SESSION['role'] ?? '') !== 'admin') {
+    http_response_code(403);
+    exit('Access denied.');
+}
+?>
+
 <nav class="navbar navbar-expand-lg">
   <div class="container">
 
