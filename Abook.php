@@ -1,346 +1,283 @@
 <?php
-session_start();
- if(!isset($_SESSION['id']))
- {
-   header('refresh:0;index.php');
- }
-?>
-<html>
+require_once "includes/auth.php";
+require_admin();
+include "includes/connect_db.php";
 
+$errors = [];
+$successMessage = '';
+$id = 0;
+$name = '';
+$author = '';
+$publish_date = '';
+$price = '';
+$quantity = '';
+$targetFile = '';
+
+function uploadBookImage(string $oldFile = ''): string
+{
+    if (!isset($_FILES['file']) || $_FILES['file']['error'] === UPLOAD_ERR_NO_FILE) {
+        return $oldFile;
+    }
+
+    if ($_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+        throw new RuntimeException('Unable to upload the selected image.');
+    }
+
+    if ($_FILES['file']['size'] > 5 * 1024 * 1024) {
+        throw new RuntimeException('The image must be 5 MB or smaller.');
+    }
+
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime = finfo_file($finfo, $_FILES['file']['tmp_name']);
+    finfo_close($finfo);
+
+    $allowed = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/gif' => 'gif'
+    ];
+
+    if (!isset($allowed[$mime])) {
+        throw new RuntimeException('Only JPG, JPEG, PNG and GIF images are allowed.');
+    }
+
+    $dir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads';
+    if (!is_dir($dir) && !mkdir($dir, 0755, true)) {
+        throw new RuntimeException('Upload directory is not available.');
+    }
+
+    $fileName = bin2hex(random_bytes(16)) . '.' . $allowed[$mime];
+    $relativePath = 'uploads/' . $fileName;
+    $absolutePath = $dir . DIRECTORY_SEPARATOR . $fileName;
+
+    if (!move_uploaded_file($_FILES['file']['tmp_name'], $absolutePath)) {
+        throw new RuntimeException('Error uploading file.');
+    }
+
+    if ($oldFile !== '' && strpos($oldFile, 'uploads/') === 0) {
+        $oldPath = __DIR__ . DIRECTORY_SEPARATOR . $oldFile;
+        if (is_file($oldPath)) {
+            @unlink($oldPath);
+        }
+    }
+
+    return $relativePath;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'], $_GET['id'])) {
+    $action = $_GET['action'];
+    $bookId = filter_var($_GET['id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+
+    if ($bookId === false) {
+        $errors['general'] = 'Invalid book ID.';
+    } elseif ($action === 'edit') {
+        $stmt = $db->prepare("SELECT * FROM books WHERE book_id = :id LIMIT 1");
+        $stmt->execute([':id' => $bookId]);
+        $book = $stmt->fetch();
+
+        if ($book) {
+            $id = (int)$book['book_id'];
+            $name = $book['book_name'];
+            $author = $book['author'];
+            $publish_date = $book['publish_date'];
+            $price = $book['price'];
+            $quantity = $book['quantity'];
+            $targetFile = $book['img'];
+        } else {
+            $errors['general'] = 'Book not found.';
+        }
+    } elseif ($action === 'delete') {
+        $stmt = $db->prepare("SELECT img FROM books WHERE book_id = :id LIMIT 1");
+        $stmt->execute([':id' => $bookId]);
+        $book = $stmt->fetch();
+
+        if (!$book) {
+            $errors['general'] = 'Book not found.';
+        } else {
+            $stmt = $db->prepare("DELETE FROM books WHERE book_id = :id");
+            try {
+                $stmt->execute([':id' => $bookId]);
+                if ($stmt->rowCount() === 1) {
+                    if (!empty($book['img']) && strpos($book['img'], 'uploads/') === 0) {
+                        $imagePath = __DIR__ . DIRECTORY_SEPARATOR . $book['img'];
+                        if (is_file($imagePath)) {
+                            @unlink($imagePath);
+                        }
+                    }
+                    $successMessage = 'Book deleted successfully.';
+                } else {
+                    $errors['general'] = 'Book could not be deleted.';
+                }
+            } catch (PDOException $e) {
+                $errors['general'] = 'This book cannot be deleted because related records exist.';
+            }
+        }
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['my_form'])) {
+    $postedId = filter_var($_POST['id'] ?? 0, FILTER_VALIDATE_INT);
+    $id = ($postedId && $postedId > 0) ? $postedId : 0;
+    $name = trim($_POST['name'] ?? '');
+    $author = trim($_POST['author'] ?? '');
+    $publish_date = trim($_POST['publish_date'] ?? '');
+    $price = trim($_POST['price'] ?? '');
+    $quantity = trim($_POST['quantity'] ?? '');
+    $oldImage = '';
+
+    if ($id > 0) {
+        $stmt = $db->prepare("SELECT img FROM books WHERE book_id = :id LIMIT 1");
+        $stmt->execute([':id' => $id]);
+        $existing = $stmt->fetch();
+        if (!$existing) {
+            $errors['general'] = 'Book not found.';
+        } else {
+            $oldImage = $existing['img'];
+            $targetFile = $oldImage;
+        }
+    }
+
+    if ($name === '') {
+        $errors['name_err'] = 'Name is Required';
+    }
+    if ($author === '') {
+        $errors['author_err'] = "Author's Name is Required";
+    }
+    if ($publish_date === '') {
+        $errors['publishDate_err'] = 'Publish Date is Required';
+    } elseif ($publish_date > date('Y-m-d')) {
+        $errors['publishDate_err'] = 'Publish date cannot be in the future.';
+    }
+    if ($price === '' || !is_numeric($price) || (float)$price <= 0) {
+        $errors['price_err'] = 'Price must be greater than 0.';
+    }
+    if ($quantity === '' || filter_var($quantity, FILTER_VALIDATE_INT) === false || (int)$quantity < 0) {
+        $errors['quantity_err'] = 'Quantity must be 0 or greater.';
+    }
+
+    try {
+        if (empty($errors)) {
+            if (isset($_FILES['file']) && $_FILES['file']['error'] !== UPLOAD_ERR_NO_FILE) {
+                $targetFile = uploadBookImage($oldImage);
+            } elseif ($id === 0) {
+                $errors['file_err'] = 'File is Required';
+            }
+
+            if (empty($errors)) {
+                if ($id > 0) {
+                    $stmt = $db->prepare(
+                        "UPDATE books SET book_name=:name, author=:author, publish_date=:publish_date,
+                         price=:price, quantity=:quantity, img=:img WHERE book_id=:id"
+                    );
+                    $stmt->execute([
+                        ':id' => $id,
+                        ':name' => $name,
+                        ':author' => $author,
+                        ':publish_date' => $publish_date,
+                        ':price' => (float)$price,
+                        ':quantity' => (int)$quantity,
+                        ':img' => $targetFile
+                    ]);
+                    $successMessage = 'Book updated successfully.';
+                } else {
+                    $stmt = $db->prepare(
+                        "INSERT INTO books (book_name, author, publish_date, price, quantity, img)
+                         VALUES (:name, :author, :publish_date, :price, :quantity, :img)"
+                    );
+                    $stmt->execute([
+                        ':name' => $name,
+                        ':author' => $author,
+                        ':publish_date' => $publish_date,
+                        ':price' => (float)$price,
+                        ':quantity' => (int)$quantity,
+                        ':img' => $targetFile
+                    ]);
+                    $successMessage = 'Book added successfully.';
+                }
+
+                $id = 0;
+                $name = '';
+                $author = '';
+                $publish_date = '';
+                $price = '';
+                $quantity = '';
+                $targetFile = '';
+            }
+        }
+    } catch (Throwable $e) {
+        if ($id === 0 && $targetFile !== '' && strpos($targetFile, 'uploads/') === 0) {
+            @unlink(__DIR__ . DIRECTORY_SEPARATOR . $targetFile);
+        }
+        $errors['general'] = 'Unable to save the book right now.';
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Market Books</title>
+  <title>Market Books - Books</title>
   <link rel="stylesheet" href="css/bootstrap.min.css" />
   <link rel="stylesheet" href="css/all.min.css" />
   <link rel="stylesheet" href="css/boot.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,500;1,100&display=swap"
-    rel="stylesheet" />
 </head>
-
 <body>
+<?php include "includes/adminHeader.php"; ?>
 
+<?php if ($successMessage !== ''): ?><div class="alert alert-success" role="alert"><?php echo htmlspecialchars($successMessage, ENT_QUOTES, 'UTF-8'); ?></div><?php endif; ?>
+<?php if (isset($errors['general'])): ?><div class="alert alert-danger" role="alert"><?php echo htmlspecialchars($errors['general'], ENT_QUOTES, 'UTF-8'); ?></div><?php endif; ?>
 
-  <?php
-  include "includes/connect_db.php";
-  include "includes/adminHeader.php";
-  if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    if (isset($_POST["my_form"])) {
-      $name = $_POST["name"];
-      $author = $_POST["author"];
-      $price = $_POST['price'];
-      $quantity = $_POST['quantity'];
-      $publish_date = $_POST['publish_date'];
-      $targetFile = $_POST['per_file'];
+<div class="project text-center pt-5 pb-5">
+  <h4 class="text-black fw-bold">Management of Books</h4>
+  <i class="fa-solid fa-book-open fs-1"></i>
+</div>
 
-      if (empty(trim($name))) {
-        $errors["name_err"] = "Name is Required";
-      } else {
-        if (!preg_match("/^[a-zA-Z-' ]*$/", $name)) {
-          $errors["name_err"] = "only char and white space allowed";
-        }
-      }
-      if (empty(trim($author))) {
-        $errors["author_err"] = "Author's Name is Required";
-      } else {
-        if (!preg_match("/^[a-zA-Z-' ]*$/", $author)) {
-          $errors["author_err"] = "only char and white space allowed";
-        }
-      }
+<form action="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>" method="post" enctype="multipart/form-data">
+  <fieldset class="border p-3 project">
+    <div class="row">
+      <div class="col mb-2"><label>Name:</label><input class="form-control" type="hidden" name="id" value="<?php echo (int)$id; ?>"><input class="form-control" type="text" name="name" value="<?php echo htmlspecialchars($name, ENT_QUOTES, 'UTF-8'); ?>"><span class="text-danger"><?php echo htmlspecialchars($errors['name_err'] ?? '', ENT_QUOTES, 'UTF-8'); ?></span></div>
+      <div class="col mb-2"><label>Author:</label><input class="form-control" type="text" name="author" value="<?php echo htmlspecialchars($author, ENT_QUOTES, 'UTF-8'); ?>"><span class="text-danger"><?php echo htmlspecialchars($errors['author_err'] ?? '', ENT_QUOTES, 'UTF-8'); ?></span></div>
+      <div class="col mb-2"><label>Publish date:</label><input class="form-control" type="date" name="publish_date" value="<?php echo htmlspecialchars($publish_date, ENT_QUOTES, 'UTF-8'); ?>"><span class="text-danger"><?php echo htmlspecialchars($errors['publishDate_err'] ?? '', ENT_QUOTES, 'UTF-8'); ?></span></div>
+    </div>
+    <div class="row mb-4">
+      <div class="col"><label>Price:</label><input class="form-control" type="number" step="0.01" name="price" min="0.01" value="<?php echo htmlspecialchars((string)$price, ENT_QUOTES, 'UTF-8'); ?>"><span class="text-danger"><?php echo htmlspecialchars($errors['price_err'] ?? '', ENT_QUOTES, 'UTF-8'); ?></span></div>
+      <div class="col"><label>Quantity:</label><input class="form-control" type="number" name="quantity" min="0" value="<?php echo htmlspecialchars((string)$quantity, ENT_QUOTES, 'UTF-8'); ?>"><span class="text-danger"><?php echo htmlspecialchars($errors['quantity_err'] ?? '', ENT_QUOTES, 'UTF-8'); ?></span></div>
+      <div class="col"><label>Photo:</label><input class="form-control" type="file" name="file" accept="image/jpeg,image/png,image/gif"><span class="text-danger"><?php echo htmlspecialchars($errors['file_err'] ?? '', ENT_QUOTES, 'UTF-8'); ?></span></div>
+    </div>
+    <input type="submit" value="Save" class="btn btn-primary w-25 d-block mx-auto" name="my_form">
+  </fieldset>
+</form>
 
-      if (empty(trim($publish_date))) {
-        $errors["publishDate_err"] = "Publish Date is Required";
-      }else {
-        if ( $publish_date > date("Y-m-d")) {
-          $errors["publishDate_err"] = "Invaild Format Publish Date";
-        }
-      }
+<div class="container-fluid mt-4">
+  <table class="table table-bordered text-center">
+    <thead class="table-info"><tr><th>Id</th><th>Photo</th><th>Book Name</th><th>Author</th><th>Publish Date</th><th>Price</th><th>Quantity</th><th>Action</th></tr></thead>
+    <tbody>
+    <?php
+    $books = $db->query("SELECT * FROM books ORDER BY book_id DESC")->fetchAll();
+    foreach ($books as $book):
+    ?>
+      <tr>
+        <td><?php echo (int)$book['book_id']; ?></td>
+        <td><img width="60" src="<?php echo htmlspecialchars($book['img'], ENT_QUOTES, 'UTF-8'); ?>" alt="Book cover"></td>
+        <td><?php echo htmlspecialchars($book['book_name'], ENT_QUOTES, 'UTF-8'); ?></td>
+        <td><?php echo htmlspecialchars($book['author'], ENT_QUOTES, 'UTF-8'); ?></td>
+        <td><?php echo htmlspecialchars($book['publish_date'], ENT_QUOTES, 'UTF-8'); ?></td>
+        <td><?php echo htmlspecialchars((string)$book['price'], ENT_QUOTES, 'UTF-8'); ?></td>
+        <td><?php echo (int)$book['quantity']; ?></td>
+        <td>
+          <a href="Abook.php?action=edit&id=<?php echo (int)$book['book_id']; ?>" class="btn btn-info">Edit</a>
+          <a href="Abook.php?action=delete&id=<?php echo (int)$book['book_id']; ?>" class="btn btn-danger ms-2" onclick="return confirm('Delete this book?');">Delete</a>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if (empty($books)): ?><tr><td colspan="8">No books found.</td></tr><?php endif; ?>
+    </tbody>
+  </table>
+</div>
 
-      if (empty(trim($price))) {
-        $errors["price_err"] = "Price is Required";
-      } else {
-        if (!is_numeric($price) || $price < 1) {
-          $errors["price_err"] = "Invaild Format Email";
-        }
-      }
-
-      if (empty(trim($quantity))) {
-        $errors["quantity_err"] = "Quantity is Required";
-      } else {
-        if (!is_numeric($quantity) || $quantity < 1) {
-          $errors["quantity_err"] = "Invaild Format Email";
-        }
-      }
-
-
-      if (isset($_FILES['file']) && (!empty($_FILES['file']["name"]) || isset($targetFile))) {
-        if (!isset($targetFile)) {
-          $targetDir = 'uploads/';
-          $targetFile = $targetDir . basename($_FILES['file']['name']); // Path of the target file // Check if file is a valid upload 
-          $fileExtension = strtolower(pathinfo($targetFile, PATHINFO_EXTENSION));
-          $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif'];
-          if (!in_array($fileExtension, $allowedExtensions)) {
-            $errors["file_err"] = "'jpg', 'jpeg', 'png', 'gif' the allowed extentions";
-          }
-        }
-      } else {
-        $errors["file_err"] = "File is Required";
-      }
-
-      if (!isset($errors)) {
-        if (!empty($_FILES['file']["name"])) {
-
-          if (isset($targetFile)) {
-            if (file_exists($targetFile)) {
-              if (!unlink($targetFile)) {
-                echo "<div class='alert alert-danger'role='alert'>Image not deleted.</div>";
-              }
-            }
-          }
-          $targetDir = 'uploads/'; // Directory where the file will be uploaded 
-          $targetFile = $targetDir . basename($_FILES['file']['name']); // Path of the target file // Check if file is a valid upload 
-          $fileExtension = strtolower(pathinfo($targetFile, PATHINFO_EXTENSION));
-          // Define allowed file extensions 
-          $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif'];
-          if (in_array($fileExtension, $allowedExtensions)) {
-            if (!move_uploaded_file($_FILES['file']['tmp_name'], $targetFile)) {
-              echo "Error uploading file.";
-            }
-          } else {
-            echo "'jpg', 'jpeg', 'png', 'gif' the allowed extentions";
-          }
-        }
-
-        if (is_numeric($_POST["id"]) && $_POST["id"] > 0) {
-          $stmt = $db->prepare("Update books set book_name=:book_name,author=:author,publish_date=:publish_date,price=:price,quantity=:quantity,img=:img where book_id=:book_id");
-          $stmt->bindParam(':book_id', $_POST['id']);
-          $stmt->bindParam(':book_name', $name);
-          $stmt->bindParam(':author', $author);
-          $stmt->bindParam(':publish_date', $publish_date);
-          $stmt->bindParam(':price', $price);
-          $stmt->bindParam(':quantity', $quantity);
-          $stmt->bindParam(':img', $targetFile);
-          $stmt->execute();
-          $rowCount = $stmt->rowCount();
-
-          if ($rowCount > 0) {
-            echo "<div class='alert alert-success'role='alert'>Updated successfully!</div>";
-            $id = "";
-            $name = "";
-            $author = "";
-            $publish_date = "";
-            $price = "";
-            $quantity = "";
-            $targetFile = "";
-
-
-          } else {
-            echo "<div class='alert alert-danger'role='alert'>Book not found or could not be updated.</div>";
-          }
-
-        } else {
-
-          $stmt = $db->prepare("INSERT INTO books(book_name, author, publish_date, price, quantity, img) VALUES (:book_name,:author,:publish_date,:price,:quantity,:img)");
-          $stmt->bindParam(':book_name', $name);
-          $stmt->bindParam(':author', $author);
-          $stmt->bindParam(':publish_date', $publish_date);
-          $stmt->bindParam(':price', $price);
-          $stmt->bindParam(':quantity', $quantity);
-          $stmt->bindParam(':img', $targetFile);
-          $stmt->execute();
-          echo "<div class='alert alert-success'role='alert'>Registration successful!</div>";
-          $name = "";
-          $author = "";
-          $publish_date = "";
-          $price = "";
-          $quantity = "";
-          $targetFile = "";
-        }
-      }
-    }
-  } else {
-    if (isset($_GET['id']) && isset($_GET['action'])) {
-      $id = $_GET['id'];
-      if ($_GET['action'] == "edit") {
-        $stmt = $db->prepare("select * FROM books WHERE book_id =:id");
-        $stmt->bindParam(':id', $id);
-        $stmt->execute();
-        $book = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($book) {
-          $id = $book['book_id'];
-          $name = $book["book_name"];
-          $author = $book["author"];
-          $publish_date = $book["publish_date"];
-          $price = $book["price"];
-          $quantity = $book["quantity"];
-          $targetFile = $book["img"];
-        } else {
-          echo "<div class='alert alert-danger'role='alert'Book not found.</div>";
-        }
-      } else {
-        $stmt = $db->prepare("SELECT * FROM books WHERE book_id = :id");
-        $stmt->bindParam(':id', $id);
-        $stmt->execute();
-        $book = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$book) {
-          echo "<div class='alert alert-danger'role='alert'>Book not found or could not be deleted.</div>";
-        } else {
-          $targetFile = $book['img'];
-          if (isset($targetFile)) {
-            if (file_exists($targetFile)) {
-              if (unlink($targetFile)) {
-                $stmt = $db->prepare("DELETE FROM books WHERE book_id = :id");
-                $stmt->bindValue(':id', $id);
-                $stmt->execute();
-                $rowCount = $stmt->rowCount();
-                if ($rowCount > 0) {
-                  echo "<div class='alert alert-success'role='alert'>Book deleted successfully.</div>";
-                } else {
-                  echo "<div class='alert alert-danger'role='alert'>Book not found or could not be deleted.</div>";
-                }
-              } else {
-                echo "<div class='alert alert-danger'role='alert'>Image not deleted.</div>";
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  ?>
-
-
-
-  <div class="project text-center pt-5 pb-5">
-    <h4 class="text-black fw-bold"> Managment of Books </h4>
-    <i class="fa-solid fa-book-open fs-1"></i>
-  </div>
-
-  <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post" enctype="multipart/form-data">
-    <fieldset class="border p-3 project">
-      <div class="row">
-        <div class="col mb-2">
-          <div class="form-group">
-            <label for="name">Name:</label>
-            <input class="form-control" type="text" hidden name="id" value="<?php echo isset($id) ? $id : ""; ?>">
-            <input class="form-control" type="text" name="name" value="<?php echo isset($name) ? $name : ""; ?>">
-            <span class="text-danger">
-              <?php echo isset($errors["name_err"]) ? $errors["name_err"] : ""; ?>
-            </span>
-          </div>
-        </div>
-        <div class="col mb-2">
-          <div class="form-group">
-            <label for="author">Author:</label>
-            <input class="form-control" type="text" name="author" value="<?php echo isset($author) ? $author : ""; ?>">
-            <span class="text-danger">
-              <?php echo isset($errors["author_err"]) ? $errors["author_err"] : ""; ?>
-            </span>
-          </div>
-        </div>
-        <div class="row mb-2">
-          <div class="col">
-            <div class="form-group">
-              <label for="username">publish_date</label>
-              <input class="form-control" type="date" name="publish_date"
-                value="<?php echo isset($publish_date) ? $publish_date : ""; ?>">
-              <span class="text-danger">
-                <?php echo isset($errors["publishDate_err"]) ? $errors["publishDate_err"] : ""; ?>
-              </span>
-            </div>
-          </div>
-        </div>
-        <div class="row mb-5">
-          <div class="col">
-            <div class="form-group">
-              <label for="price"> The Price:</label>
-              <input class="form-control" type="number" name="price" value="<?php echo isset($price) ? $price : ""; ?>">
-              <span class="text-danger">
-                <?php echo isset($errors["price_err"]) ? $errors["price_err"] : ""; ?>
-              </span>
-            </div>
-          </div>
-          <div class="col">
-            <div class="form-group">
-              <label for="quantity"> The Quantity:</label>
-              <input class="form-control" type="number" name="quantity"
-                value="<?php echo isset($quantity) ? $quantity : ""; ?>">
-              <span class="text-danger">
-                <?php echo isset($errors["quantity_err"]) ? $errors["quantity_err"] : ""; ?>
-              </span>
-            </div>
-          </div>
-          <div class="col">
-            <div class="form-group">
-              <label for="file">Photo:</label>
-              <input class="form-control" hidden name="per_file"
-                value="<?php echo isset($targetFile) ? $targetFile : ""; ?>" />
-              <input class="form-control" type="file" name="file" />
-              <span class="text-danger">
-                <?php echo isset($errors["file_err"]) ? $errors["file_err"] : ""; ?>
-              </span>
-            </div>
-          </div>
-        </div>
-        <div class="row position-relative">
-          <div class="col">
-            <div class="pt-4 w-100">
-              <input type="submit" value="Save"
-                class="btn btn-primary w-25 position-absolute bottom-0 start-50 translate-middle-x" name="my_form">
-            </div>
-          </div>
-        </div>
-    </fieldset>
-  </form>
-
-  <div class="container-fluid">
-    <hr>
-    <table class="table table-bordered text-center">
-      <thead class="table-info">
-        <tr>
-          <th>Id</th>
-          <th>Photo</th>
-          <th>Book_Name</th>
-          <th>Author</th>
-          <th>Publish_date</th>
-          <th>Price</th>
-          <th>Quantity</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php
-        $stmt = $db->prepare("SELECT * FROM books");
-
-        $stmt->execute();
-
-        $Books = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($Books as $book) {
-          echo "<tr>";
-          echo "<td>" . $book['book_id'] . "</td>";
-          echo "<td> <img class='' width=60px src='" . $book['img'] . "' /> </td>";
-          echo "<td>" . $book['book_name'] . "</td>";
-          echo "<td>" . $book['author'] . "</td>";
-          echo "<td>" . $book['publish_date'] . "</td>";
-          echo "<td>" . $book['price'] . "</td>";
-          echo "<td>" . $book['quantity'] . "</td>";
-          echo "<td> <a href='Abook.php?action=edit&&id=" . $book['book_id'] . "' class='btn btn-info'>Edit</a>";
-          echo " <a href='Abook.php?action=delete&&id=" . $book['book_id'] . "' class='btn btn-danger ms-5'>Delete</a></td>";
-          echo "</tr>";
-        }
-
-        ?>
-      </tbody>
-    </table>
-  </div>
-
-  <script src="js/bootstrap.bundle.min.js"></script>
-  <script src="js/all.min.js"></script>
-  <script src="bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="js/bootstrap.bundle.min.js"></script>
+<script src="js/all.min.js"></script>
+<script src="bootstrap/dist/js/bootstrap.min.js"></script>
 </body>
-
-
 </html>
