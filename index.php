@@ -1,9 +1,75 @@
 <?php
 session_start();
+include "includes/connect_db.php";
+$errors = [];
+$loginMessage = '';
 
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["login_form"])) {
+    $userName = trim($_POST['userName'] ?? '');
+    $plainPassword = $_POST['password'] ?? '';
 
-session_unset();
+    if ($userName === '') {
+        $errors["userName_err"] = "userName is Required";
+    }
+    if ($plainPassword === '') {
+        $errors["password_err"] = "Password is Required";
+    }
 
+    if (empty($errors)) {
+        try {
+            $stmt = $db->prepare("SELECT * FROM user WHERE userName = :userName LIMIT 1");
+            $stmt->execute([':userName' => $userName]);
+            $row = $stmt->fetch();
+
+            if (!$row) {
+                $loginMessage = "The login information is incorrect. Please try again.";
+            } else {
+                $status = $row['status'] ?? 'active';
+
+                if ($status !== 'active') {
+                    $loginMessage = "Your account is waiting for admin approval.";
+                } else {
+                    $validPassword = password_verify($plainPassword, $row['password']);
+
+                    // Upgrade existing SHA1 passwords the first time the user logs in.
+                    if (!$validPassword && hash_equals($row['password'], sha1($plainPassword))) {
+                        $newHash = password_hash($plainPassword, PASSWORD_DEFAULT);
+                        $update = $db->prepare("UPDATE user SET password = :password WHERE id = :id");
+                        $update->execute([
+                            ':password' => $newHash,
+                            ':id' => $row['id']
+                        ]);
+                        $validPassword = true;
+                    }
+
+                    if ($validPassword) {
+                        session_regenerate_id(true);
+
+                        $_SESSION['id'] = $row['id'];
+                        $_SESSION['name'] = $row['name'];
+                        $_SESSION['email'] = $row['email'];
+                        $_SESSION['birthdate'] = $row['birthdate'];
+                        $_SESSION['userName'] = $row['userName'];
+                        $_SESSION['img'] = $row['img'];
+                        $_SESSION['role'] = $row['role'];
+                        $_SESSION['status'] = $status;
+
+                        if ($row['role'] === 'admin') {
+                            header('Location: Abook.php');
+                        } else {
+                            header('Location: home.php');
+                        }
+                        exit;
+                    }
+
+                    $loginMessage = "The login information is incorrect. Please try again.";
+                }
+            }
+        } catch (PDOException $e) {
+            $loginMessage = "Unable to process login right now.";
+        }
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -15,81 +81,19 @@ session_unset();
   <title>login</title>
   <link rel="stylesheet" href="css/bank.css" />
   <link href="bootstrap/css/bootstrap.min.css" rel="stylesheet">
-
 </head>
 
 <body>
-  <?php
-  include "includes/connect_db.php";
-  $errors = [];
-
-  if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    if (isset($_POST["login_form"])) {
-      $userName = $_POST['userName'];
-      $password = $_POST['password'];
-
-      if (empty(trim($userName))) {
-        $errors["userName_err"] = "userName is Required";
-      }
-      if (empty(trim($password))) {
-        $errors["password_err"] = "Password is Required";
-      }
-
-      if (empty($errors)) {
-
-
-        try {
-          
-          $password = sha1($_POST['password']);
-          $stmt = $db->prepare("SELECT * from user WHERE userName = :userName and password =:password");
-          $stmt->bindParam(':userName', $userName);
-          $stmt->bindParam(':password', $password);
-          $stmt->execute();
-          $row = $stmt->fetch(PDO::FETCH_ASSOC);
-          if ($row) {
-            // password_verify($password,$row['password'])
-            // $password === $row['password']
-            if ($row['role'] == "admin") {
-              $_SESSION['id'] = $row['id'];
-              $_SESSION['name'] = $row['name'];
-              $_SESSION['email'] = $row['email'];
-              $_SESSION['birthdate'] = $row['birthdate'];
-              $_SESSION['userName'] = $row['userName'];
-              $_SESSION['password'] = $row['password'];
-              $_SESSION['img'] = $row['img'];
-              $_SESSION['role'] = $row['role'];
-
-              header('Location: Abook.php');
-            } else {
-              $_SESSION['id'] = $row['id'];
-              $_SESSION['name'] = $row['name'];
-              $_SESSION['email'] = $row['email'];
-              $_SESSION['birthdate'] = $row['birthdate'];
-              $_SESSION['userName'] = $row['userName'];
-              $_SESSION['password'] = $row['password'];
-              $_SESSION['img'] = $row['img'];
-              $_SESSION['role'] = $row['role'];
-
-              header('Location: home.php');
-            }
-          } else {
-
-            echo "<div class='alert alert-danger' role='alert'>The login information is incorrect. Please try again.</div>";
-          }
-        } catch (PDOException $e) {
-          echo $e;
-        }
-      }
-    }
-  }
-
-  ?>
-
+  <?php if ($loginMessage !== ''): ?>
+    <div class="alert alert-danger" role="alert">
+      <?php echo htmlspecialchars($loginMessage, ENT_QUOTES, 'UTF-8'); ?>
+    </div>
+  <?php endif; ?>
 
   <div class="container">
     <div class="row">
       <div class="col-lg-7">
-        <div class="row mt-5" >
+        <div class="row mt-5">
           <img class="imgg img-fluid w-100 " src="img/111.jpg" alt="" />
         </div>
         <div class="row mt-2 mb-3">
@@ -98,7 +102,7 @@ session_unset();
       </div>
 
       <div class="col-lg-5 d-flex justify-content-center align-items-center">
-        <form class="form_main" action=" " method="post">
+        <form class="form_main" action="" method="post">
           <p class="heading">Login</p>
           <div class="inputContainer">
             <svg viewBox="0 0 16 16" fill="#2e2e2e" height="16" width="16" xmlns="http://www.w3.org/2000/svg"
@@ -108,12 +112,12 @@ session_unset();
               </path>
             </svg>
             <input class="inputField" placeholder="userName" id="userName" type="text" name="userName"
-              value="<?php echo isset($userName) ? $userName : ""; ?>">
-
+              value="<?php echo htmlspecialchars($userName ?? '', ENT_QUOTES, 'UTF-8'); ?>">
           </div>
           <span class="text-danger">
-            <?php echo isset($errors["userName_err"]) ? $errors["userName_err"] : ""; ?>
+            <?php echo isset($errors["userName_err"]) ? htmlspecialchars($errors["userName_err"], ENT_QUOTES, 'UTF-8') : ""; ?>
           </span>
+
           <div class="inputContainer">
             <svg viewBox="0 0 16 16" fill="#2e2e2e" height="16" width="16" xmlns="http://www.w3.org/2000/svg"
               class="inputIcon">
@@ -121,14 +125,12 @@ session_unset();
                 d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z">
               </path>
             </svg>
-            <input placeholder="Password" id="password" class="inputField" type="password" name="password"
-              value="<?php //echo isset($password) ? $password : ""; ?>">
-
+            <input placeholder="Password" id="password" class="inputField" type="password" name="password" value="">
           </div>
           <span class="text-danger">
-            <?php echo isset($errors["password_err"]) ? $errors["password_err"] : ""; ?>
+            <?php echo isset($errors["password_err"]) ? htmlspecialchars($errors["password_err"], ENT_QUOTES, 'UTF-8') : ""; ?>
           </span>
-          <!-- <button id="button" >Submit</button> -->
+
           <input id="button" type="submit" value="Login" name="login_form">
           <div class="signupContainer">
             <p>Don't have any account?</p>
