@@ -1,3 +1,7 @@
+<?php
+require_once __DIR__ . '/auth.php';
+require_login();
+?>
 <nav class="navbar navbar-expand-lg">
   <div class="container">
 
