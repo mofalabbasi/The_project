@@ -1,0 +1,65 @@
+<nav class="navbar navbar-expand-lg">
+  <div class="container">
+
+    <button class="navbar-toggler mb-2" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent"
+      aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <span><i class="fa-solid fa-bars"></i></span>
+    </button>
+
+    <div class="navbar-collapse collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav me-5 mb-2 mb-lg-0">
+        <li class="nav-item">
+          <a class="nav-link p-2 p-lg-3" aria-current="page" href="home.php">Home</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link p-2 p-lg-3" href="books.php">Books</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link p-2 p-lg-3" href="cart.php">Cart</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link p-2 p-lg-3" href="about.php">about</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link p-2 p-lg-3" href="contact.php">contact</a>
+        </li>
+
+      </ul>
+      <div class="search ps-3 pe-3 d-none d-lg-block me-5">
+        <i class="fa-solid fa-magnifying-glass"></i>
+      </div>
+      <a class="btn btn-primary rounded-pill mb-4 mb-lg-0" href="index.php" role="button">logout</a>
+    </div>
+
+    <div>
+    <?php echo "<img class='rounded-circle position-absolute bg-light' width='40px' height='40px' src='" . $_SESSION['img'] . "' />"; ?>
+    <button type="button" data-bs-toggle="collapse" data-bs-target="#vv" aria-controls="vv" aria-expanded="false"
+      aria-label="Toggle navigation" class="rounded-pill b">
+      <?php echo "<span class=''> " . $_SESSION['name'] . "</span>" ?>
+    </button>
+    <div class="collapse z-3 position-absolute rounded-bottom text-center  mt-2 f " id="vv">
+      <?php
+      echo "<img class='rounded-circle bg-light' width='90px' height='90px' src='" . $_SESSION['img'] . "' />";
+      echo "<p class='mt-3'>" . $_SESSION['name'] . "</p>";
+      echo "<p>" . $_SESSION['birthdate'] . "</p>";
+      echo "<p>" . $_SESSION['email'] . "</p>";
+      echo "<p> " . $_SESSION['role'] . "</p>";
+      echo "<form action='sign up.php' method='post'>";
+      echo "<input class='form-control' type='text' hidden name='id' value='" . $_SESSION['id'] . "'/>";
+      echo "<input type='submit' value='Edit Profile' class='btn btn-primary rounded-pill w-50 mt-2'name='edit_profile' />";
+      echo "</form>";
+      ?>
+    </div>
+  </div>
+
+  </div>
+
+
+
+  <!-- <form class="d-flex mt-3" role="search">
+          <input class="form-control me-2" type="search" placeholder="Search" aria-label="Search">
+          <button class="btn btn-success" type="submit">Search</button>
+        </form> -->
+
+
+</nav>
