@@ -1,0 +1,72 @@
+name: PHP Project Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: project
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, mbstring, fileinfo
+          coverage: none
+
+      - name: Check PHP syntax
+        shell: bash
+        run: |
+          set -e
+          find . -type f -name '*.php' -not -path './.git/*' -print0 |
+            xargs -0 -n1 php -l
+
+      - name: Import database schema
+        run: mysql --protocol=TCP -h 127.0.0.1 -u root project < project.sql
+
+      - name: Verify required database objects
+        shell: bash
+        run: |
+          set -e
+          mysql --protocol=TCP -h 127.0.0.1 -u root project -e "SHOW TABLES LIKE 'books'; SHOW TABLES LIKE 'carts'; SHOW TABLES LIKE 'orders'; SHOW TABLES LIKE 'user'; SHOW TABLES LIKE 'contact_messages';"
+          mysql --protocol=TCP -h 127.0.0.1 -u root project -e "SHOW COLUMNS FROM user LIKE 'status';"
+
+      - name: Start PHP server
+        run: |
+          php -S 127.0.0.1:8000 > /tmp/php-server.log 2>&1 &
+          echo $! > /tmp/php-server.pid
+          sleep 2
+
+      - name: Smoke test web pages
+        shell: bash
+        run: |
+          set -e
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/index.php)" = "200"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/sign%20up.php)" = "200"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/home.php)" = "302"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/Auser.php)" = "302"
+
+      - name: Show PHP server log on failure
+        if: failure()
+        run: cat /tmp/php-server.log
