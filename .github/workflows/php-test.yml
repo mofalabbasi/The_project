@@ -61,11 +61,25 @@ jobs:
       - name: Smoke test web pages
         shell: bash
         run: |
-          set -e
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/index.php)" = "200"
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/sign%20up.php)" = "200"
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/home.php)" = "302"
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/Auser.php)" = "302"
+          set -euo pipefail
+          check_code() {
+            local url="$1"
+            local expected="$2"
+            local code
+            code="$(curl -sS -o "/tmp/response.html" -w '%{http_code}' "$url")"
+            echo "$url -> HTTP $code (expected $expected)"
+            if [ "$code" != "$expected" ]; then
+              echo '--- response body (first 80 lines) ---'
+              sed -n '1,80p' /tmp/response.html || true
+              echo '--- end response body ---'
+              return 1
+            fi
+          }
+
+          check_code 'http://127.0.0.1:8000/index.php' '200'
+          check_code 'http://127.0.0.1:8000/sign%20up.php' '200'
+          check_code 'http://127.0.0.1:8000/home.php' '302'
+          check_code 'http://127.0.0.1:8000/Auser.php' '302'
 
       - name: Show PHP server log on failure
         if: failure()
