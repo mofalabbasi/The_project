@@ -1,7 +1,9 @@
--- Run this once in the `project` database after the existing schema has been imported.
+-- Safe database update for the current `project` database.
+-- This script is safe to run more than once on MariaDB/MySQL versions that
+-- support ADD COLUMN IF NOT EXISTS.
 
 ALTER TABLE `user`
-  ADD COLUMN `status` ENUM('pending','active') NOT NULL DEFAULT 'pending' AFTER `role`;
+  ADD COLUMN IF NOT EXISTS `status` ENUM('pending','active') NOT NULL DEFAULT 'pending' AFTER `role`;
 
 -- Keep the existing administrator and current sample accounts usable.
 UPDATE `user` SET `status` = 'active' WHERE `role` = 'admin';
