@@ -1,6 +1,7 @@
 <?php
 
-$host = 'localhost';
+// Use TCP loopback so the application works consistently with XAMPP and CI service containers.
+$host = '127.0.0.1';
 $dbname = 'project';
 $username = 'root';
 $password = '';
