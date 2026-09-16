@@ -20,6 +20,16 @@ SET time_zone = "+00:00";
 -- Database: `project`
 --
 
+-- Remove existing tables so this single SQL file can be imported again safely.
+-- Foreign keys are disabled temporarily so dependent tables can be removed first.
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS `contact_messages`;
+DROP TABLE IF EXISTS `orders`;
+DROP TABLE IF EXISTS `carts`;
+DROP TABLE IF EXISTS `books`;
+DROP TABLE IF EXISTS `user`;
+SET FOREIGN_KEY_CHECKS = 1;
+
 -- --------------------------------------------------------
 
 --
