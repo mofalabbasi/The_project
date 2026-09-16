@@ -11,7 +11,6 @@ SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
 SET time_zone = "+00:00";
 
-
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
 /*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
@@ -116,7 +115,7 @@ INSERT INTO `orders` (`id`, `userId`, `address`, `phone`, `bookName`, `authorNam
 (17, 18, 'sanaa', 773804888, 'I loved scoundrel', 'Emad Rashad Othman', '2023-10-23', 900, 0x75706c6f6164732f32382e6a7067),
 (18, 18, 'sanaa', 773804888, 'Intergestus', 'Ahmed Khaled Mustafa', '2023-10-23', 1150, 0x75706c6f6164732f32302e6a7067),
 (19, 18, 'sanaa', 773804888, 'Messages from the Quran', 'Adham Sharqawi', '2023-10-23', 1000, 0x75706c6f6164732f31342e6a7067),
-(20, 19, 'hamdan', 774620441, 'The devil is telling', 'Ahmed Khaled Mustafa', '2023-10-23', 1000, 0x75706c6f6164732f32342e6a7067),
+(20, 19, 'hamdan', 774620441, 'The devil is telling', 'Ahmed Khaled Mustafa', '2023-10-23', 1000, 0x75706c6f6164732f32322e6a7067),
 (22, 18, 'sanaa', 773804888, 'Fear series', 'Osama Al-Muslim', '2023-10-23', 3500, 0x75706c6f6164732f33312e6a7067),
 (23, 10, 'hhh', 772878794, 'Games', 'Ana Huang', '2023-10-23', 1000, 0x75706c6f6164732f332e6a7067),
 (24, 10, 'hhh', 772878794, 'LIES', 'Ana Huang', '2023-10-23', 1300, 0x75706c6f6164732f352e6a7067);
@@ -135,94 +134,93 @@ CREATE TABLE `user` (
   `userName` varchar(255) NOT NULL,
   `password` varchar(255) NOT NULL,
   `img` blob NOT NULL,
-  `role` varchar(255) NOT NULL
+  `role` varchar(255) NOT NULL,
+  `status` enum('pending','active') NOT NULL DEFAULT 'pending'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- إرجاع أو استيراد بيانات الجدول `user`
 --
 
-INSERT INTO `user` (`id`, `name`, `email`, `birthdate`, `userName`, `password`, `img`, `role`) VALUES
-(9, 'Bashar Alabbasi', 'basharalabbasi500@gmail.com', '1999-01-12', 'b', '40bd001563085fc35165329ea1ff5c5ecbdbbeef', 0x75706c6f6164732f373231312e6a7067, 'admin'),
-(10, 'Bashar Alabbasi', 'basharalabbasi500@gmail.com', '2000-01-10', 'a', '40bd001563085fc35165329ea1ff5c5ecbdbbeef', 0x75706c6f6164732f7465616d2d312e706e67, 'User'),
-(15, 'cgjhghnh', 'basharalabbasi1@gmail.com', '2018-01-01', 'cc', '40bd001563085fc35165329ea1ff5c5ecbdbbeef', 0x75706c6f6164732f7465616d2d342e706e67, 'User'),
-(17, 'd', 'basharalabbasi33@gmail.com', '2023-10-23', 'd', '40bd001563085fc35165329ea1ff5c5ecbdbbeef', 0x75706c6f6164732f312e6a7067, 'User'),
-(18, 'ahmed', 'a@g.com', '2001-03-09', 'ariqe', '40bd001563085fc35165329ea1ff5c5ecbdbbeef', 0x75706c6f6164732f7465616d2d332e706e67, 'User'),
-(19, 'emad', 'emad@gmail.com', '2001-06-01', 'emad', '40bd001563085fc35165329ea1ff5c5ecbdbbeef', 0x75706c6f6164732f7465616d2d342e706e67, 'User');
+INSERT INTO `user` (`id`, `name`, `email`, `birthdate`, `userName`, `password`, `img`, `role`, `status`) VALUES
+(9, 'Bashar Alabbasi', 'basharalabbasi500@gmail.com', '1999-01-12', 'b', '40bd001563085fc35165329ea1ff5c5ecbdbbeef', 0x75706c6f6164732f373231312e6a7067, 'admin', 'active'),
+(10, 'Bashar Alabbasi', 'basharalabbasi500@gmail.com', '2000-01-10', 'a', '40bd001563085fc35165329ea1ff5c5ecbdbbeef', 0x75706c6f6164732f7465616d2d312e706e67, 'User', 'active'),
+(15, 'cgjhghnh', 'basharalabbasi1@gmail.com', '2018-01-01', 'cc', '40bd001563085fc35165329ea1ff5c5ecbdbbeef', 0x75706c6f6164732f7465616d2d342e706e67, 'User', 'active'),
+(17, 'd', 'basharalabbasi33@gmail.com', '2023-10-23', 'd', '40bd001563085fc35165329ea1ff5c5ecbdbbeef', 0x75706c6f6164732f312e6a7067, 'User', 'active'),
+(18, 'ahmed', 'a@g.com', '2001-03-09', 'ariqe', '40bd001563085fc35165329ea1ff5c5ecbdbbeef', 0x75706c6f6164732f7465616d2d332e706e67, 'User', 'active'),
+(19, 'emad', 'emad@gmail.com', '2001-06-01', 'emad', '40bd001563085fc35165329ea1ff5c5ecbdbbeef', 0x75706c6f6164732f7465616d2d342e706e67, 'User', 'active');
+
+-- --------------------------------------------------------
+
+--
+-- بنية الجدول `contact_messages`
+--
+
+CREATE TABLE `contact_messages` (
+  `id` int(11) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `phone` varchar(30) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `subject` varchar(255) NOT NULL,
+  `message` text NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `is_read` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- Indexes for dumped tables
 --
 
---
--- Indexes for table `books`
---
 ALTER TABLE `books`
   ADD PRIMARY KEY (`book_id`);
 
---
--- Indexes for table `carts`
---
 ALTER TABLE `carts`
   ADD PRIMARY KEY (`id`),
   ADD KEY `userId` (`userId`);
 
---
--- Indexes for table `orders`
---
 ALTER TABLE `orders`
   ADD PRIMARY KEY (`id`),
   ADD KEY `userId` (`userId`);
 
---
--- Indexes for table `user`
---
 ALTER TABLE `user`
+  ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `contact_messages`
   ADD PRIMARY KEY (`id`);
 
 --
 -- AUTO_INCREMENT for dumped tables
 --
 
---
--- AUTO_INCREMENT for table `books`
---
 ALTER TABLE `books`
   MODIFY `book_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30;
 
---
--- AUTO_INCREMENT for table `carts`
---
 ALTER TABLE `carts`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=29;
 
---
--- AUTO_INCREMENT for table `orders`
---
 ALTER TABLE `orders`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=25;
 
---
--- AUTO_INCREMENT for table `user`
---
 ALTER TABLE `user`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
 
---
--- قيود الجداول المحفوظة
---
+ALTER TABLE `contact_messages`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- القيود للجدول `carts`
 --
+
 ALTER TABLE `carts`
   ADD CONSTRAINT `carts_ibfk_1` FOREIGN KEY (`userId`) REFERENCES `user` (`id`);
 
 --
 -- القيود للجدول `orders`
 --
+
 ALTER TABLE `orders`
   ADD CONSTRAINT `orders_ibfk_1` FOREIGN KEY (`userId`) REFERENCES `user` (`id`);
+
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
